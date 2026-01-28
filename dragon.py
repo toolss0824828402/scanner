@@ -5,16 +5,27 @@ import time
 import socket
 import sys
 from urllib.parse import urljoin, urlparse
+from concurrent.futures import ThreadPoolExecutor
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 import questionary
 
-# الإعدادات الفنية والحقوق
 console = Console()
 AUTHOR = "Monkey D Dragon"
-GITHUB_REPO = "https://github.com/toolss0824828402/scanner.git"
+GITHUB_REPO = "https://github.com/toolss0824828402"
+
+# قائمة موسعة جداً للمسارات والملفات الحساسة (تطوير 1000 ضعف)
+SENSITIVE_DB = [
+    '/admin', '/login', '/config.php', '/.env', '/backup.sql', '/.git', '/wp-json',
+    '/phpmyadmin', '/api/v1', '/robots.txt', '/.htaccess', '/db_backup.zip',
+    '/settings.py', '/docker-compose.yml', '/node_modules', '/v1/user/list',
+    '/debug', '/cpanel', '/dashboard', '/test', '/tmp', '/private', '/ssh'
+]
+
+# قائمة النطاقات الفرعية الشائعة
+SUBDOMAINS = ['admin', 'dev', 'test', 'api', 'mail', 'blog', 'staging', 'vpn', 'cloud']
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -37,143 +48,113 @@ def print_banner():
      ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝
     [/bold red]
     [bold yellow]              COMMANDER: {AUTHOR}[/bold yellow]
-    [bold cyan]      Official Repo: {GITHUB_REPO}[/bold cyan]
+    [bold cyan]      DRAGON'S FURY v8.0 | THE ULTIMATE INTEL ENGINE[/bold cyan]
     """
-    console.print(Panel(banner, border_style="red", title="v6.0 Ultimate Deep Crawler"))
+    console.print(Panel(banner, border_style="red"))
 
-def deep_dragon_scan(url):
-    if not url.startswith(('http://', 'https://')):
-        url = 'https://' + url
-    
-    # استخراج النطاق الأساسي لضمان البحث في نفس المسار
-    parsed_url = urlparse(url)
-    base_domain = parsed_url.netloc
-    
-    # متغيرات البيانات (للبحث عن 99+ معلومة)
-    results_data = {
-        "Network": {},
-        "Internal_Links": [],
-        "External_Links": [],
-        "Vulnerabilities": [],
-        "Metadata": [],
-        "Security_Headers": []
-    }
+def scan_port(domain, port):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.3)
+        if s.connect_ex((domain, port)) == 0:
+            return port
+    except: pass
+    finally: s.close()
+    return None
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=40),
-        TaskProgressColumn(),
-        console=console
-    ) as progress:
+def ultimate_dragon_engine(target):
+    if not target.startswith(('http://', 'https://')): target = 'https://' + target
+    parsed = urlparse(target)
+    domain = parsed.netloc
+    
+    results = {"ports": [], "subdomains": [], "paths": [], "ip": "N/A", "geo": {}}
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), console=console) as progress:
         
-        # 1. تحليل الشبكة والاستخبارات
-        t1 = progress.add_task("[cyan]Targeting Network...", total=100)
+        # 1. تحليل الـ IP والجغرافيا
+        t1 = progress.add_task("[cyan]IP Intelligence...", total=100)
         try:
-            ip_address = socket.gethostbyname(base_domain)
-            geo = requests.get(f"http://ip-api.com/json/{ip_address}", timeout=5).json()
-            results_data["Network"] = {"IP": ip_address, "Geo": geo}
+            results["ip"] = socket.gethostbyname(domain)
+            results["geo"] = requests.get(f"http://ip-api.com/json/{results['ip']}", timeout=5).json()
             progress.update(t1, completed=100)
-        except: progress.update(t1, description="[red]Net Error", completed=100)
+        except: progress.update(t1, description="[red]IP Error", completed=100)
 
-        # 2. الزحف الذكي (نفس المسار + 99 معلومة)
-        t2 = progress.add_task("[magenta]Deep Crawling Path...", total=100)
-        try:
-            response = requests.get(url, timeout=12, headers={'User-Agent': 'Mozilla/5.0'})
-            # استخراج كافة الروابط وتحويلها لروابط كاملة
-            raw_links = re.findall(r'href=["\'](.[^"\']+)["\']', response.text)
-            
-            for link in raw_links:
-                full_link = urljoin(url, link)
-                if base_domain in full_link:
-                    results_data["Internal_Links"].append(full_link)
-                else:
-                    results_data["External_Links"].append(full_link)
-            
-            # البحث عن Metadata (أكثر من 99 نوع فرعي يمكن استخراجه هنا)
-            metas = re.findall(r'<meta (.[^>]+)>', response.text)
-            results_data["Metadata"] = metas[:99] # تحديد البحث بـ 99 معلومة
-            
-            progress.update(t2, completed=100)
-        except: progress.update(t2, description="[red]Crawl Failed", completed=100)
-
-        # 3. فحص الثغرات والرؤوس الأمنية
-        t3 = progress.add_task("[red]Vulnerability Shield Test...", total=100)
-        headers_to_check = ["Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options"]
-        for header in headers_to_check:
-            if header in response.headers:
-                results_data["Security_Headers"].append(f"[green]✔ {header}[/green]")
-            else:
-                results_data["Security_Headers"].append(f"[red]✘ {header} (Missing)[/red]")
-        
-        # بايلودات فحص متقدمة
-        payloads = {"SQLi": "' OR 1=1", "XSS": "<svg/onload=alert(1)>", "LFI": "../../../etc/passwd"}
-        for name, p in payloads.items():
+        # 2. فحص النطاقات الفرعية (Subdomains)
+        t2 = progress.add_task("[green]Hunting Subdomains...", total=len(SUBDOMAINS))
+        base_domain = ".".join(domain.split(".")[-2:])
+        for sub in SUBDOMAINS:
             try:
-                test_r = requests.get(url, params={"id": p, "search": p}, timeout=5)
-                if p in test_r.text:
-                    results_data["Vulnerabilities"].append(f"[bold red]Potential {name} Risk[/bold red]")
+                sub_url = f"{sub}.{base_domain}"
+                socket.gethostbyname(sub_url)
+                results["subdomains"].append(sub_url)
             except: pass
+            progress.advance(t2)
+
+        # 3. فحص البورتات المتعدد (Multi-threaded Ports)
+        t3 = progress.add_task("[yellow]Scanning Ports...", total=100)
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            ports = [21, 22, 23, 25, 53, 80, 443, 3306, 8080, 27017]
+            futures = [executor.submit(scan_port, domain, p) for p in ports]
+            for f in futures:
+                res = f.result()
+                if res: results["ports"].append(res)
         progress.update(t3, completed=100)
 
-    # --- عرض التقارير النهائية بفخامة ---
+        # 4. البحث العميق عن المسارات (Directory Brute)
+        t4 = progress.add_task("[magenta]Deep Path Discovery...", total=len(SENSITIVE_DB))
+        for path in SENSITIVE_DB:
+            try:
+                r = requests.head(urljoin(target, path), timeout=1, allow_redirects=False)
+                if r.status_code in [200, 301, 403]:
+                    results["paths"].append(f"{path} ({r.status_code})")
+            except: pass
+            progress.advance(t4)
+
+    # --- العرض الأسطوري للنتائج ---
     print_banner()
     
-    # تقرير الاستخبارات
-    net = results_data["Network"]
-    geo = net.get("Geo", {})
-    intel_table = Table(title="[bold yellow]Intelligence Report[/bold yellow]", expand=True)
-    intel_table.add_column("Property", style="cyan")
-    intel_table.add_column("Data")
-    intel_table.add_row("Resolved IP", net.get("IP", "N/A"))
-    intel_table.add_row("Origin", f"{geo.get('country', 'N/A')} - {geo.get('city', 'N/A')}")
-    intel_table.add_row("ISP / Org", geo.get("org", "N/A"))
-    console.print(intel_table)
+    # خريطة البورتات والـ IP
+    intel_t = Table(title="[bold red]Network Map[/bold red]", expand=True)
+    intel_t.add_column("Type"); intel_t.add_column("Value", style="bold green")
+    intel_t.add_row("IP", results["ip"])
+    intel_t.add_row("ISP", results["geo"].get("isp", "N/A"))
+    intel_t.add_row("Location", f"{results['geo'].get('country')} ({results['geo'].get('city')})")
+    intel_t.add_row("Open Ports", ", ".join(map(str, results["ports"])))
+    console.print(intel_t)
 
-    # تقرير الروابط (نفس المسار)
-    links_count = len(results_data["Internal_Links"])
-    link_table = Table(title=f"[bold magenta]Internal Path Links ({links_count})[/bold magenta]", expand=True)
-    link_table.add_column("URL (Same Path Only)")
-    for l in list(set(results_data["Internal_Links"]))[:15]: 
-        link_table.add_row(l)
-    console.print(link_table)
+    # جدول النطاقات الفرعية
+    sub_t = Table(title="[bold green]Subdomain Discovery[/bold green]", expand=True)
+    sub_t.add_column("Host"); sub_t.add_column("Status")
+    for s in results["subdomains"]: sub_t.add_row(s, "[green]ALIVE[/green]")
+    console.print(sub_t)
 
-    # تقرير البيانات المكتشفة (99+)
-    meta_table = Table(title=f"[bold green]Detected Meta/Asset Tags ({len(results_data['Metadata'])})[/bold green]", expand=True)
-    meta_table.add_column("Tag Content")
-    for m in results_data["Metadata"][:10]:
-        meta_table.add_row(f"[dim]{m}[/dim]")
-    console.print(meta_table)
+    # جدول الملفات والمسارات
+    path_t = Table(title="[bold magenta]Sensitive Files & Directories[/bold magenta]", expand=True)
+    path_t.add_column("Path / File Found")
+    for p in results["paths"]: path_t.add_row(f"[bold white]{p}[/bold white]")
+    console.print(path_t)
 
-    # تقرير الأمن
-    sec_report = "\n".join(results_data["Security_Headers"] + results_data["Vulnerabilities"])
-    console.print(Panel(sec_report, title="[bold red]Security Defense Analysis[/bold red]", border_style="red"))
-    
-    log_event(f"Deep Scan: {url} | Internal Links: {links_count} | IP: {net.get('IP')}")
+    log_event(f"Ultimate Fury Scan: {target} | Subdomains: {len(results['subdomains'])} | Paths: {len(results['paths'])}")
 
 def main():
     while True:
         print_banner()
-        menu = questionary.select(
-            "Welcome, Commander Dragon. Choose Operation:",
-            choices=["Launch Deep Scan", "View Logs", "Update Tool", "Exit"]
+        choice = questionary.select(
+            "Welcome, Commander Dragon. Launch Operation:",
+            choices=["Execute Full Fury Scan", "History Logs", "GitHub Repo", "Exit System"]
         ).ask()
 
-        if menu == "Exit": sys.exit()
-        elif menu == "Launch Deep Scan":
-            target = console.input("\n[bold white]Enter Target URL: [/bold white]").strip()
-            if target: deep_dragon_scan(target)
-        elif menu == "View Logs":
-            clear_screen()
+        if choice == "Exit System": break
+        if "Full" in choice:
+            target = console.input("\n[bold white]Enter Target Domain: [/bold white]").strip()
+            if target: ultimate_dragon_engine(target)
+        elif "History" in choice:
             if os.path.exists("history.txt"):
                 with open("history.txt", "r") as f: console.print(f.read())
-            else: console.print("[yellow]History empty.[/yellow]")
-        elif menu == "Update Tool":
-            os.system("git pull")
-            console.print("[green]Tool updated if updates available.[/green]")
+        elif "GitHub" in choice:
+            console.print(f"[bold cyan]Visit: {GITHUB_REPO}[/bold cyan]")
         
         questionary.press_any_key_to_continue().ask()
 
 if __name__ == "__main__":
-    try: main()
-    except KeyboardInterrupt: sys.exit()
+    main()
