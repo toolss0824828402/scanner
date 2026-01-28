@@ -1,3 +1,7 @@
 requests
 rich
 questionary
+pyOpenSSL
+cryptography
+urllib3
+certifi
