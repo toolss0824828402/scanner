@@ -9,8 +9,10 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 import questionary
 
+# إعدادات الواجهة والحقوق
 console = Console()
 AUTHOR = "Monkey D Dragon"
+GITHUB_LINK = "https://github.com/toolss0824828402"
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -31,13 +33,20 @@ def print_banner():
      ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝
     [/bold red]
     [bold yellow]             COMMANDER: {AUTHOR}[/bold yellow]
-    [bold white]   REAL-TIME WEB INTELLIGENCE & SECURITY SUITE v3.0[/bold white]
+    [bold cyan]    GitHub: {GITHUB_LINK}[/bold cyan]
     """
-    console.print(Panel(banner, border_style="red"))
+    console.print(Panel(banner, border_style="red", subtitle="v4.0 Final Edition"))
 
 def advanced_scan(target_url):
+    # تصحيح الرابط تلقائياً
     if not target_url.startswith(('http://', 'https://')):
         target_url = 'https://' + target_url
+
+    # قيم افتراضية لمنع أخطاء UnboundLocalError
+    ip_addr = "Unknown"
+    geo_info = {}
+    found_links = []
+    vulns = []
 
     with Progress(
         SpinnerColumn(),
@@ -47,79 +56,91 @@ def advanced_scan(target_url):
         console=console
     ) as progress:
         
-        # المرحلة 1: جمع معلومات الشبكة
-        task1 = progress.add_task("[cyan]Gathering Network Info...", total=100)
+        # المرحلة 1: المعلومات الأساسية
+        t1 = progress.add_task("[cyan]Scanning Network Info...", total=100)
         try:
             domain = target_url.replace('https://','').replace('http://','').split('/')[0]
             ip_addr = socket.gethostbyname(domain)
-            geo_info = requests.get(f"http://ip-api.com/json/{ip_addr}", timeout=5).json()
-            progress.update(task1, completed=100)
+            response = requests.get(f"http://ip-api.com/json/{ip_addr}", timeout=5)
+            if response.status_code == 200:
+                geo_info = response.json()
+            progress.update(t1, completed=100)
         except:
-            progress.update(task1, description="[red]Network Info Failed", completed=100)
+            progress.update(t1, description="[red]Network Scan Failed", completed=100)
 
-        # المرحلة 2: فحص الروابط (Mass Scan)
-        task2 = progress.add_task("[magenta]Scraping & Checking Links...", total=100)
+        # المرحلة 2: استخراج الروابط
+        t2 = progress.add_task("[magenta]Scraping Content...", total=100)
         try:
             res = requests.get(target_url, timeout=10)
             found_links = list(set(re.findall(r'https?://[^\s<>"]+', res.text)))
-            progress.update(task2, completed=100)
+            progress.update(t2, completed=100)
         except:
-            found_links = []
-            progress.update(task2, description="[red]Scraping Failed", completed=100)
+            progress.update(t2, description="[red]Scraping Failed", completed=100)
 
         # المرحلة 3: فحص الثغرات التجريبي
-        task3 = progress.add_task("[red]Testing Vulnerabilities...", total=100)
-        vulns = []
-        payloads = {"SQLi": "' OR 1=1", "XSS": "<script>alert(1)</script>"}
+        t3 = progress.add_task("[red]Security Testing...", total=100)
+        payloads = {"SQLi": "' OR 1=1 --", "XSS": "<script>alert(1)</script>"}
         for p_name, p_val in payloads.items():
             try:
-                r = requests.get(target_url, params={"test": p_val}, timeout=5)
-                if p_val in r.text: vulns.append(f"[red]Confirmed {p_name}[/red]")
+                test_res = requests.get(target_url, params={"test": p_val}, timeout=5)
+                if p_val in test_res.text:
+                    vulns.append(f"[bold red]Detected: {p_name}[/bold red]")
             except: pass
-        progress.update(task3, completed=100)
+        progress.update(t3, completed=100)
 
-    # عرض النتائج في جداول احترافية
+    # عرض التقارير النهائية
     print_banner()
     
-    # جدول 1: معلومات الموقع
-    info_table = Table(title="[bold cyan]Target Origin Report[/bold cyan]", expand=True)
-    info_table.add_column("Property", style="yellow")
+    # جدول معلومات الموقع (تم حل مشكلة geo_info هنا)
+    info_table = Table(title="[bold cyan]Target Intelligence Report[/bold cyan]", expand=True)
+    info_table.add_column("Information", style="yellow")
     info_table.add_column("Value", style="white")
     info_table.add_row("IP Address", ip_addr)
-    info_table.add_row("Country", geo_info.get('country', 'Unknown'))
-    info_table.add_row("ISP", geo_info.get('isp', 'Unknown'))
+    info_table.add_row("Country", geo_info.get('country', 'N/A'))
+    info_table.add_row("City", geo_info.get('city', 'N/A'))
+    info_table.add_row("ISP", geo_info.get('isp', 'N/A'))
     console.print(info_table)
 
-    # جدول 2: فحص الروابط
-    link_table = Table(title=f"[bold magenta]Extracted Links ({len(found_links)})[/bold magenta]", expand=True)
-    link_table.add_column("Link Sample", overflow="fold")
-    for l in found_links[:10]: link_table.add_row(l)
+    # جدول الروابط
+    link_table = Table(title=f"[bold magenta]Detected Links ({len(found_links)})[/bold magenta]", expand=True)
+    link_table.add_column("Sample URL", overflow="fold")
+    for l in found_links[:12]: # عرض أول 12 رابط فقط
+        link_table.add_row(l)
     console.print(link_table)
 
-    # جدول 3: الثغرات
-    v_status = "[green]No common vulnerabilities found (Basic Test)[/green]" if not vulns else ", ".join(vulns)
-    console.print(Panel(f"Vulnerability Status: {v_status}", title="[bold red]Security Report[/bold red]", border_style="red"))
+    # تقرير الأمان
+    v_report = "\n".join(vulns) if vulns else "[green]No common flaws detected in basic scan.[/green]"
+    console.print(Panel(v_report, title="[bold red]Security Analysis[/bold red]", border_style="red"))
     
-    log_result(f"Full Scan on {target_url} - IP: {ip_addr} - Links: {len(found_links)}")
+    log_result(f"Scan on {target_url} | IP: {ip_addr} | Links: {len(found_links)}")
 
 def main():
     while True:
         print_banner()
         choice = questionary.select(
-            "Welcome, Commander Dragon. Select your operation:",
-            choices=["Start Deep Scan", "View Saved History", "Tool Update", "Exit"]
+            "Welcome, Dragon. Execute your command:",
+            choices=[
+                "1. Full Deep Scan",
+                "2. View Command History",
+                "3. Credits & Social",
+                "4. Exit"
+            ]
         ).ask()
 
-        if choice == "Exit":
+        if choice == "4. Exit":
+            console.print("[bold red]Dragon Offline.[/bold red]")
             break
-        elif choice == "View Saved History":
+        
+        if "1." in choice:
+            target = console.input("\n[bold white]Enter Target URL: [/bold white]")
+            advanced_scan(target)
+        elif "2." in choice:
             clear_screen()
             if os.path.exists("history.txt"):
                 with open("history.txt", "r") as f: console.print(f.read())
-            else: console.print("[yellow]No history yet.[/yellow]")
-        elif choice == "Start Deep Scan":
-            target = console.input("\n[bold white]Enter URL to Scan: [/bold white]")
-            advanced_scan(target)
+            else: console.print("[yellow]History is empty.[/yellow]")
+        elif "3." in choice:
+            console.print(Panel(f"Developer: {AUTHOR}\nGitHub: {GITHUB_LINK}", title="About"))
         
         questionary.press_any_key_to_continue().ask()
 
